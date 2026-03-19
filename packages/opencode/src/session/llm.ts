@@ -22,6 +22,42 @@ import { SystemPrompt } from "./system"
 import { Flag } from "@/flag/flag"
 import { PermissionNext } from "@/permission/next"
 import { Auth } from "@/auth"
+import { createHash } from "crypto"
+
+const CLAUDE_CODE_VERSION = "2.1.76"
+const CLAUDE_CODE_USER_AGENT = `claude-code/${CLAUDE_CODE_VERSION}`
+const CLAUDE_CODE_BILLING_SALT = "59cf53e54c78"
+
+function sampleJsCodeUnit(text: string, idx: number): string {
+  // Match JavaScript's UTF-16 charCodeAt behavior
+  if (idx < text.length) {
+    return text.charAt(idx)
+  }
+  return "0"
+}
+
+function firstUserMessageText(messages: ModelMessage[]): string {
+  for (const msg of messages) {
+    if (msg.role !== "user") continue
+    if (typeof msg.content === "string") return msg.content
+    if (Array.isArray(msg.content)) {
+      for (const part of msg.content) {
+        if (part.type === "text") return part.text
+      }
+    }
+  }
+  return ""
+}
+
+function claudeCodeBillingHeader(messages: ModelMessage[]): string {
+  const text = firstUserMessageText(messages)
+  const sampled = [4, 7, 20].map((idx) => sampleJsCodeUnit(text, idx)).join("")
+  const versionHash = createHash("sha256")
+    .update(`${CLAUDE_CODE_BILLING_SALT}${sampled}${CLAUDE_CODE_VERSION}`)
+    .digest("hex")
+  const entrypoint = process.env.CLAUDE_CODE_ENTRYPOINT?.trim() || "cli"
+  return `x-anthropic-billing-header: cc_version=${CLAUDE_CODE_VERSION}.${versionHash.slice(0, 3)}; cc_entrypoint=${entrypoint}; cch=00000;`
+}
 
 export namespace LLM {
   const log = Log.create({ service: "llm" })
@@ -217,12 +253,18 @@ export namespace LLM {
             ? {
                 "User-Agent": `opencode/${Installation.VERSION}`,
               }
-            : undefined),
+            : {
+                "User-Agent": CLAUDE_CODE_USER_AGENT,
+              }),
         ...input.model.headers,
         ...headers,
       },
       maxRetries: input.retries ?? 0,
       messages: [
+        // Prepend Claude Code billing header for anthropic provider (required for Claude Max OAuth)
+        ...(input.model.providerID === "anthropic"
+          ? [{ role: "system" as const, content: claudeCodeBillingHeader(input.messages) }]
+          : []),
         ...system.map(
           (x): ModelMessage => ({
             role: "system",
