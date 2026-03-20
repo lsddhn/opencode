@@ -24,7 +24,7 @@ import { PermissionNext } from "@/permission/next"
 import { Auth } from "@/auth"
 import { createHash } from "crypto"
 
-const CLAUDE_CODE_VERSION = "2.1.76"
+const CLAUDE_CODE_VERSION = "2.1.80"
 const CLAUDE_CODE_USER_AGENT = `claude-code/${CLAUDE_CODE_VERSION}`
 const CLAUDE_CODE_BILLING_SALT = "59cf53e54c78"
 
