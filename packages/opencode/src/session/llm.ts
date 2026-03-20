@@ -25,11 +25,15 @@ import { Auth } from "@/auth"
 import { createHash } from "crypto"
 
 const CLAUDE_CODE_VERSION = "2.1.80"
-const CLAUDE_CODE_USER_AGENT = `claude-code/${CLAUDE_CODE_VERSION}`
 const CLAUDE_CODE_BILLING_SALT = "59cf53e54c78"
 
+// API calls use claude-cli/<version> (external, <entrypoint>)
+function claudeCodeApiUserAgent(): string {
+  const entrypoint = process.env.CLAUDE_CODE_ENTRYPOINT ?? "cli"
+  return `claude-cli/${CLAUDE_CODE_VERSION} (external, ${entrypoint})`
+}
+
 function sampleJsCodeUnit(text: string, idx: number): string {
-  // Match JavaScript's UTF-16 charCodeAt behavior
   if (idx < text.length) {
     return text.charAt(idx)
   }
@@ -55,7 +59,7 @@ function claudeCodeBillingHeader(messages: ModelMessage[]): string {
   const versionHash = createHash("sha256")
     .update(`${CLAUDE_CODE_BILLING_SALT}${sampled}${CLAUDE_CODE_VERSION}`)
     .digest("hex")
-  const entrypoint = process.env.CLAUDE_CODE_ENTRYPOINT?.trim() || "cli"
+  const entrypoint = process.env.CLAUDE_CODE_ENTRYPOINT ?? "unknown"
   return `x-anthropic-billing-header: cc_version=${CLAUDE_CODE_VERSION}.${versionHash.slice(0, 3)}; cc_entrypoint=${entrypoint}; cch=00000;`
 }
 
@@ -254,7 +258,7 @@ export namespace LLM {
                 "User-Agent": `opencode/${Installation.VERSION}`,
               }
             : {
-                "User-Agent": CLAUDE_CODE_USER_AGENT,
+                "User-Agent": claudeCodeApiUserAgent(),
               }),
         ...input.model.headers,
         ...headers,
